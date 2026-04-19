@@ -1,0 +1,72 @@
+version: 2
+
+models:
+  - name: agg_payments_daily
+    description: >
+      Daily pre-aggregated payment metrics serving KPI dashboards. One row per
+      combination of (payment_date, country, currency, status, channel, merchant_category, kyc_tier).
+
+      Incremental strategy: delete+insert on payment_date. On each hourly run, affected dates
+      (dates where any payment had updated_at >= last run watermark) are fully re-aggregated.
+      This correctly handles reversals, which change a payment's status on its original
+      created_at date rather than the date of reversal.
+
+      Dashboard metric derivations:
+        - Total payments: sum(payment_count) with dimension filters as needed
+        - Gross volume:   sum(total_amount) where status != 'failed'
+        - Net volume:     sum(total_amount) where status = 'success'
+
+      kyc_tier reflects the wallet's tier at the time of each payment, resolved via the
+      snap_wallets SCD2 join in int_payments_enriched. This ensures historical breakdowns
+      stay accurate across tier upgrades. Null tiers (bootstrap gap for wallets that existed
+      before the first snapshot run) are coalesced to 'unknown'.
+    columns:
+      - name: payment_date
+        description: Date of the payment (derived from created_at). Delete+insert key for incremental runs.
+        tests:
+          - not_null
+      - name: country
+        description: ISO 3166-1 alpha-2 country code.
+        tests:
+          - not_null
+      - name: currency
+        description: ISO 4217 currency code. Amounts are stored in local currency.
+        tests:
+          - not_null
+      - name: status
+        description: Payment status for this group.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["success", "failed", "reversed"]
+      - name: channel
+        description: Payment channel.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["ussd", "app", "agent"]
+      - name: merchant_category
+        description: Merchant category. 'none' for P2P transfers.
+        tests:
+          - not_null
+      - name: kyc_tier
+        description: >
+          Wallet KYC tier at the time of payment. One of '0', '1', '2', or 'unknown'.
+          'unknown' occurs when no snap_wallets row covers the payment date - a bootstrap
+          limitation for wallets that existed before the first snapshot run (see DESIGN.md).
+        tests:
+          - not_null
+      - name: payment_count
+        description: Number of payments in this group.
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+      - name: total_amount
+        description: Sum of payment amounts in local currency for this group.
+        tests:
+          - not_null
+      - name: last_loaded_at
+        description: Timestamp when this row was last computed. Used as watermark for the next incremental run.
+        tests:
+          - not_null

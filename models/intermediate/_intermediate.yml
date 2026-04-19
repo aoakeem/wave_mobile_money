@@ -1,0 +1,124 @@
+version: 2
+
+models:
+  - name: int_payments_enriched
+    description: >
+      Payments enriched with merchant category and wallet KYC tier at time of transaction.
+      One row per payment - grain is unchanged from stg_payments.
+      Incremental merge on payment_id captures both new payments and reversals.
+      Merchant category is 'none' for P2P transfers (null merchant_id).
+      kyc_tier is resolved from snap_wallets (SCD2) using the tier valid at payment created_at,
+      enabling accurate historical KPI breakdowns by tier.
+      Compliance models read from int_compliance_monthly_payments (which sources this model)
+      rather than directly, to avoid duplicating the exchange rate join logic.
+    columns:
+      - name: payment_id
+        description: Unique payment identifier.
+        tests:
+          - unique
+          - not_null
+      - name: wallet_id
+        description: Wallet that initiated the payment.
+        tests:
+          - not_null
+      - name: amount
+        description: Payment amount in local currency.
+        tests:
+          - not_null
+      - name: currency
+        description: ISO 4217 currency code.
+        tests:
+          - not_null
+      - name: status
+        description: Current payment status.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["success", "failed", "reversed"]
+      - name: created_at
+        description: Immutable timestamp when the payment was created.
+        tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp of the most recent status change.
+        tests:
+          - not_null
+      - name: payment_date
+        description: Date portion of created_at. Used as the partition key for daily aggregation.
+        tests:
+          - not_null
+      - name: country
+        description: ISO 3166-1 alpha-2 country code.
+        tests:
+          - not_null
+      - name: channel
+        description: Payment channel.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["ussd", "app", "agent"]
+      - name: merchant_category
+        description: Merchant category. 'none' for P2P transfers with no merchant.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["supermarket", "ecommerce", "taxi", "utility", "other", "none"]
+      - name: kyc_tier
+        description: KYC tier of the wallet valid at the time of payment (from SCD2 snapshot).
+        tests:
+          - accepted_values:
+              values: [0, 1, 2]
+      - name: is_agent
+        description: True if the payment was made by a Wave agent wallet.
+
+  - name: int_compliance_monthly_payments
+    description: >
+      Current-month successful payments with amounts converted to USD via exchange rates.
+      One row per payment. Materialised as a table and rebuilt on every 15-minute compliance run.
+      Single source of truth for both mart_compliance_current (aggregation) and
+      mart_compliance_current_transactions (transaction detail), eliminating duplicated
+      exchange rate join logic across those two models.
+      amount_usd is null when no exchange rate covers the payment's currency - the
+      not_null test on mart_compliance_current_transactions.amount_usd surfaces this loudly.
+    columns:
+      - name: payment_id
+        description: Unique payment identifier.
+        tests:
+          - unique
+          - not_null
+      - name: wallet_id
+        description: Wallet that initiated the payment.
+        tests:
+          - not_null
+      - name: amount
+        description: Payment amount in local currency.
+        tests:
+          - not_null
+      - name: currency
+        description: ISO 4217 currency code.
+        tests:
+          - not_null
+      - name: amount_usd
+        description: >
+          Amount converted to USD using the latest available exchange rate on or before
+          the payment date. Null if no rate exists for this currency.
+      - name: created_at
+        description: Timestamp when the payment was created.
+        tests:
+          - not_null
+      - name: country
+        description: ISO 3166-1 alpha-2 country code.
+        tests:
+          - not_null
+      - name: channel
+        description: Payment channel.
+        tests:
+          - not_null
+      - name: merchant_id
+        description: Merchant identifier. Null for P2P transfers.
+      - name: merchant_category
+        description: Merchant category. 'none' for P2P transfers.
+        tests:
+          - not_null
+      - name: kyc_tier
+        description: KYC tier of the wallet at the time of payment (from SCD2 snapshot).

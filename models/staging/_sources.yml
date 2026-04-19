@@ -1,0 +1,84 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw source tables loaded from the Wave operational database every 15 minutes.
+    tables:
+      - name: payments
+        description: >
+          Every payment initiated on the Wave platform. Billions of rows. Status is overwritten
+          in place when a payment is reversed - the only valid transition is success -> reversed.
+          updated_at records the timestamp of any status change.
+        columns:
+          - name: payment_id
+            description: Unique identifier for a payment.
+          - name: wallet_id
+            description: The wallet (customer) that initiated the payment.
+          - name: merchant_id
+            description: The merchant receiving the payment. Null for P2P transfers.
+          - name: amount
+            description: Transaction amount in local currency.
+          - name: currency
+            description: ISO 4217 currency code, e.g. UGX, XOF.
+          - name: status
+            description: "Current payment status. One of: success, failed, reversed."
+          - name: created_at
+            description: Timestamp when the payment was first created. Immutable.
+          - name: updated_at
+            description: Timestamp of the last status change. Equals created_at unless reversed.
+          - name: country
+            description: ISO 3166-1 alpha-2 country code, e.g. UG, SN, CI.
+          - name: channel
+            description: "Source of the payment. One of: ussd, app, agent."
+
+      - name: merchants
+        description: Merchants registered on the Wave platform. Thousands of rows.
+        columns:
+          - name: merchant_id
+            description: Unique identifier for a merchant.
+          - name: merchant_name
+            description: Display name of the merchant.
+          - name: category
+            description: "Merchant category. One of: supermarket, ecommerce, taxi, utility, other."
+          - name: country
+            description: ISO 3166-1 alpha-2 country code.
+          - name: status
+            description: "Merchant account status. One of: active, inactive, suspended."
+          - name: created_at
+            description: Timestamp when the merchant was created.
+          - name: updated_at
+            description: Timestamp of the last merchant record update.
+
+      - name: wallets
+        description: >
+          Wave customer wallets. Millions of rows. One wallet per customer.
+          kyc_tier is overwritten in place when upgraded - tiers only increase (0 -> 1 -> 2).
+          updated_at records the timestamp of any kyc_tier change.
+        columns:
+          - name: wallet_id
+            description: Unique identifier for a wallet.
+          - name: user_created_at
+            description: Timestamp when the customer account was created.
+          - name: kyc_tier
+            description: "Current KYC tier. One of: 0, 1, 2. Tiers can only increase."
+          - name: country
+            description: ISO 3166-1 alpha-2 country code.
+          - name: is_agent
+            description: True if this wallet belongs to a Wave agent.
+          - name: status
+            description: "Wallet status. One of: active, inactive, blocked."
+          - name: updated_at
+            description: Timestamp of the last kyc_tier change.
+
+      - name: exchange_rates
+        description: >
+          Daily exchange rates for converting local currency amounts to USD.
+          One row per currency per day. Used by compliance models to convert
+          payment amounts against USD-denominated KYC limits.
+        columns:
+          - name: currency
+            description: ISO 4217 currency code.
+          - name: rate_date
+            description: The date for which this rate applies.
+          - name: rate_to_usd
+            description: Conversion factor - 1 unit of this currency equals rate_to_usd USD.

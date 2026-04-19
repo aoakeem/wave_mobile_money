@@ -1,0 +1,37 @@
+name: wave_mobile_money
+version: "1.0.0"
+config-version: 2
+
+profile: wave_mobile_money
+
+model-paths: ["models"]
+snapshot-paths: ["snapshots"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+vars:
+  incremental_lookback_hours: 3
+
+models:
+  wave_mobile_money:
+    staging:
+      +schema: staging
+      +materialized: view
+      +tags: ["every_15m"]
+    intermediate:
+      +schema: intermediate
+      +materialized: incremental
+      +tags: ["every_15m"]
+    marts:
+      kpi:
+        +schema: kpi
+        +materialized: incremental
+        +tags: ["hourly"]
+      compliance:
+        +schema: compliance
+        +tags: ["every_15m"]
