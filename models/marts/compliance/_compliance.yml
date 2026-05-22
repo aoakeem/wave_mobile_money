@@ -5,20 +5,8 @@ models:
     description: >
       Current list of wallets breaching their KYC monthly transaction limit.
       Fully replaced on every 15-minute run. One row per breaching wallet.
-
-      A wallet appears here when its sum of successful payment amounts for the current
-      calendar month (converted to USD) exceeds the limit for its kyc_tier:
-        - Tier 0: USD 100/month
-        - Tier 1: USD 1,000/month
-        - Tier 2: USD 10,000/month
-
-      Assumptions:
-        - Only status = 'success' transactions count toward monthly volume.
-          Reversed transactions are excluded (the transaction was unwound).
-        - kyc_tier is the wallet's current tier. Since tiers only increase,
-          this gives the most favourable (highest) limit interpretation.
-        - Exchange rates use the latest available rate on or before the payment date
-          to handle days where a rate may not yet be loaded.
+      Only status = 'success' transactions count; reversed transactions are excluded.
+      Exchange rates use the latest available rate on or before payment date.
     columns:
       - name: wallet_id
         description: Breaching wallet identifier.
@@ -95,9 +83,7 @@ models:
         tests:
           - not_null
       - name: amount_usd
-        description: >
-          Payment amount converted to USD using the exchange rate on or before payment date.
-          Not null - a null value indicates a missing exchange rate and will fail this test.
+        description: Payment amount converted to USD using the exchange rate on or before payment date.
         tests:
           - not_null
       - name: created_at
@@ -120,8 +106,10 @@ models:
         description: Merchant category. 'none' for P2P transfers.
         tests:
           - not_null
+          - accepted_values:
+              values: ["supermarket", "ecommerce", "taxi", "utility", "other", "none"]
       - name: kyc_tier
-        description: KYC tier of the transacting wallet.
+        description: "KYC tier of the wallet at the time of payment. May differ from the current tier on mart_compliance_current for wallets that upgraded mid-month."
       - name: checked_at
         description: Timestamp when this compliance check was run.
         tests:
@@ -131,10 +119,7 @@ models:
     description: >
       Append-only historical log of all compliance checks. Each 15-minute run appends
       the full contents of mart_compliance_current with the run's checked_at timestamp.
-      Supports trend analysis: e.g. "how many wallets were breaching on any given day?",
-      "which wallets have been persistently non-compliant?".
-
-      Clustered on checked_at for efficient time-range queries.
+      Use for trend analysis of breach counts over time.
     columns:
       - name: wallet_id
         description: Breaching wallet identifier at the time of this check.
@@ -176,3 +161,30 @@ models:
         description: Timestamp of the compliance check run that produced this record.
         tests:
           - not_null
+
+  - name: mart_compliance_rate_history
+    description: >
+      Append-only run-level compliance metrics. One row per 15-minute check run.
+      Stores the counts needed to compute breach rate: active wallets, transacting
+      wallets, and breaching wallets.
+    columns:
+      - name: checked_at
+        description: Timestamp of the compliance check run.
+        tests:
+          - not_null
+      - name: total_active_wallets
+        description: Total number of wallets with status = 'active' at check time.
+        tests:
+          - not_null
+      - name: transacting_wallets
+        description: Number of distinct wallets with at least one successful payment this calendar month.
+        tests:
+          - not_null
+      - name: breaching_wallets
+        description: Number of wallets exceeding their KYC monthly limit at check time.
+        tests:
+          - not_null
+      - name: breach_rate
+        description: >
+          breaching_wallets / transacting_wallets. Null at month start when no wallets
+          have transacted yet.

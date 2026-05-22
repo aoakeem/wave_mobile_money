@@ -1,5 +1,3 @@
-{{ config(materialized='view') }}
-
 select
     wallet_id,
     user_created_at,

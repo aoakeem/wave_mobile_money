@@ -73,8 +73,8 @@ sources:
       - name: exchange_rates
         description: >
           Daily exchange rates for converting local currency amounts to USD.
-          One row per currency per day. Used by compliance models to convert
-          payment amounts against USD-denominated KYC limits.
+          One row per currency per day. Used in both compliance (KYC breach detection)
+          and KPI (payment volume) USD conversions.
         columns:
           - name: currency
             description: ISO 4217 currency code.

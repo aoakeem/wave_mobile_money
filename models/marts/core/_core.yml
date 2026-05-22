@@ -1,0 +1,197 @@
+version: 2
+
+models:
+  - name: fct_payments
+    description: >
+      Fact table for payments. One row per payment reflecting current status.
+      Incremental merge on payment_id using updated_at watermark captures both
+      new payments and in-place reversals (success -> reversed).
+      merchant_category is 'none' for P2P transfers (null merchant_id).
+      kyc_tier and is_agent are resolved from snap_wallets (SCD2) at payment
+      created_at, enabling accurate historical KPI breakdowns by tier.
+    columns:
+      - name: payment_id
+        description: Unique payment identifier.
+        tests:
+          - unique:
+              config:
+                where: "updated_at::date >= dateadd(day, -1, current_date)"
+          - not_null:
+              config:
+                where: "updated_at::date >= dateadd(day, -1, current_date)"
+      - name: wallet_id
+        description: Wallet that initiated the payment.
+        tests:
+          - not_null:
+              config:
+                where: "updated_at::date >= dateadd(day, -1, current_date)"
+      - name: amount
+        description: Payment amount in local currency.
+        tests:
+          - not_null:
+              config:
+                where: "updated_at::date >= dateadd(day, -1, current_date)"
+      - name: currency
+        description: ISO 4217 currency code.
+        tests:
+          - not_null:
+              config:
+                where: "updated_at::date >= dateadd(day, -1, current_date)"
+      - name: status
+        description: Current payment status.
+        tests:
+          - not_null:
+              config:
+                where: "updated_at::date >= dateadd(day, -1, current_date)"
+          - accepted_values:
+              values: ["success", "failed", "reversed"]
+      - name: created_at
+        description: Immutable timestamp when the payment was created.
+        tests:
+          - not_null:
+              config:
+                where: "updated_at::date >= dateadd(day, -1, current_date)"
+      - name: updated_at
+        description: Timestamp of the most recent status change.
+        tests:
+          - not_null:
+              config:
+                where: "updated_at::date >= dateadd(day, -1, current_date)"
+      - name: payment_date
+        description: Date of created_at. Partition key for daily KPI aggregation.
+        tests:
+          - not_null:
+              config:
+                where: "updated_at::date >= dateadd(day, -1, current_date)"
+      - name: country
+        description: ISO 3166-1 alpha-2 country code.
+        tests:
+          - not_null:
+              config:
+                where: "updated_at::date >= dateadd(day, -1, current_date)"
+      - name: channel
+        description: Payment channel.
+        tests:
+          - not_null:
+              config:
+                where: "updated_at::date >= dateadd(day, -1, current_date)"
+          - accepted_values:
+              values: ["ussd", "app", "agent"]
+      - name: merchant_category
+        description: Merchant category. 'none' for P2P transfers.
+        tests:
+          - not_null:
+              config:
+                where: "updated_at::date >= dateadd(day, -1, current_date)"
+          - accepted_values:
+              values: ["supermarket", "ecommerce", "taxi", "utility", "other", "none"]
+      - name: kyc_tier
+        description: KYC tier valid at time of payment (from SCD2 snapshot).
+        tests:
+          - accepted_values:
+              values: [0, 1, 2]
+      - name: is_agent
+        description: True if the payment was made by a Wave agent wallet.
+
+  - name: dim_merchants
+    description: Merchant dimension. Current state. View over stg_merchants.
+    columns:
+      - name: merchant_id
+        description: Unique merchant identifier.
+        tests:
+          - unique
+          - not_null
+      - name: merchant_name
+        description: Display name of the merchant.
+        tests:
+          - not_null
+      - name: category
+        description: Merchant category.
+        tests:
+          - accepted_values:
+              values: ["supermarket", "ecommerce", "taxi", "utility", "other"]
+      - name: country
+        description: ISO 3166-1 alpha-2 country code.
+        tests:
+          - not_null
+      - name: status
+        description: Merchant account status.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["active", "inactive", "suspended"]
+
+  - name: dim_wallets
+    description: Wallet dimension. Current state. View over stg_wallets.
+    columns:
+      - name: wallet_id
+        description: Unique wallet identifier.
+        tests:
+          - unique
+          - not_null
+      - name: kyc_tier
+        description: Current KYC tier. Tiers can only increase over time.
+        tests:
+          - accepted_values:
+              values: [0, 1, 2]
+      - name: country
+        description: ISO 3166-1 alpha-2 country code.
+        tests:
+          - not_null
+      - name: is_agent
+        description: True if this wallet belongs to a Wave agent.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+      - name: status
+        description: Wallet status.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["active", "inactive", "blocked"]
+      - name: updated_at
+        description: Timestamp of the last kyc_tier update.
+        tests:
+          - not_null
+
+  - name: fct_payments_history
+    description: >
+      Append-style audit table. One row per payment state change, keyed on
+      (payment_id, version_valid_from). Captures every reversal event so that
+      reversal rates and point-in-time status can be derived. delete+insert on
+      the composite key makes reruns idempotent despite the 3-hour lookback
+      window. Use fct_payments for current state; use this model for history.
+    columns:
+      - name: payment_id
+        description: Payment identifier.
+        tests:
+          - not_null:
+              config:
+                where: "version_valid_from::date >= dateadd(day, -1, current_date)"
+      - name: version_valid_from
+        description: updated_at at the time this version was written - uniquely identifies a payment state.
+        tests:
+          - not_null:
+              config:
+                where: "version_valid_from::date >= dateadd(day, -1, current_date)"
+      - name: status
+        description: Payment status as of this version.
+        tests:
+          - not_null:
+              config:
+                where: "version_valid_from::date >= dateadd(day, -1, current_date)"
+          - accepted_values:
+              values: ["success", "failed", "reversed"]
+      - name: amount
+        description: Payment amount in local currency.
+        tests:
+          - not_null:
+              config:
+                where: "version_valid_from::date >= dateadd(day, -1, current_date)"
+      - name: wallet_id
+        description: Wallet that initiated the payment.
+        tests:
+          - not_null:
+              config:
+                where: "version_valid_from::date >= dateadd(day, -1, current_date)"

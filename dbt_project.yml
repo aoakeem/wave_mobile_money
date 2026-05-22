@@ -25,12 +25,16 @@ models:
       +tags: ["every_15m"]
     intermediate:
       +schema: intermediate
-      +materialized: incremental
+      +materialized: table
       +tags: ["every_15m"]
     marts:
+      core:
+        +schema: core
+        +materialized: table
+        +tags: ["every_15m"]
       kpi:
         +schema: kpi
-        +materialized: incremental
+        +materialized: table
         +tags: ["hourly"]
       compliance:
         +schema: compliance

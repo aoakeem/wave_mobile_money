@@ -1,0 +1,30 @@
+version: 2
+
+snapshots:
+  - name: snap_wallets
+    relation: source('raw', 'wallets')
+    config:
+      schema: snapshots
+      unique_key: wallet_id
+      strategy: timestamp
+      updated_at: updated_at
+      invalidate_hard_deletes: false
+    columns:
+      - name: wallet_id
+        description: Unique wallet identifier.
+      - name: user_created_at
+        description: Timestamp when the customer account was created.
+      - name: kyc_tier
+        description: KYC tier at the time this snapshot row was valid.
+      - name: country
+        description: ISO 3166-1 alpha-2 country code.
+      - name: is_agent
+        description: True if this wallet belongs to a Wave agent.
+      - name: status
+        description: Wallet status at the time this snapshot row was valid.
+      - name: updated_at
+        description: Source updated_at used as the SCD2 change signal.
+      - name: dbt_valid_from
+        description: Timestamp from which this wallet row is valid.
+      - name: dbt_valid_to
+        description: Timestamp at which this wallet row expired. Null for the current row.

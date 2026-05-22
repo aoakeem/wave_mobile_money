@@ -7,19 +7,15 @@ models:
       combination of (payment_date, country, currency, status, channel, merchant_category, kyc_tier).
 
       Incremental strategy: delete+insert on payment_date. On each hourly run, affected dates
-      (dates where any payment had updated_at >= last run watermark) are fully re-aggregated.
-      This correctly handles reversals, which change a payment's status on its original
-      created_at date rather than the date of reversal.
+      (dates where any payment had updated_at >= max_source_updated_at - lookback) are fully
+      re-aggregated. This correctly handles reversals, which change a payment's status on the
+      original created_at date rather than the date of reversal.
 
       Dashboard metric derivations:
         - Total payments: sum(payment_count) with dimension filters as needed
         - Gross volume:   sum(total_amount) where status != 'failed'
         - Net volume:     sum(total_amount) where status = 'success'
 
-      kyc_tier reflects the wallet's tier at the time of each payment, resolved via the
-      snap_wallets SCD2 join in int_payments_enriched. This ensures historical breakdowns
-      stay accurate across tier upgrades. Null tiers (bootstrap gap for wallets that existed
-      before the first snapshot run) are coalesced to 'unknown'.
     columns:
       - name: payment_date
         description: Date of the payment (derived from created_at). Delete+insert key for incremental runs.
@@ -49,6 +45,8 @@ models:
         description: Merchant category. 'none' for P2P transfers.
         tests:
           - not_null
+          - accepted_values:
+              values: ["supermarket", "ecommerce", "taxi", "utility", "other", "none"]
       - name: kyc_tier
         description: >
           Wallet KYC tier at the time of payment. One of '0', '1', '2', or 'unknown'.
@@ -56,6 +54,8 @@ models:
           limitation for wallets that existed before the first snapshot run (see DESIGN.md).
         tests:
           - not_null
+          - accepted_values:
+              values: ["0", "1", "2", "unknown"]
       - name: payment_count
         description: Number of payments in this group.
         tests:
@@ -66,7 +66,16 @@ models:
         description: Sum of payment amounts in local currency for this group.
         tests:
           - not_null
-      - name: last_loaded_at
-        description: Timestamp when this row was last computed. Used as watermark for the next incremental run.
+      - name: total_amount_usd
+        description: >
+          total_amount converted to USD using the latest available exchange rate on or
+          before payment_date. Null when no rate exists for the currency. Local currency
+          (total_amount) is authoritative; this column is a convenience for cross-currency
+          rollups. Historical values may shift only if FX rates are backfilled (uncommon).
+      - name: max_source_updated_at
+        description: >
+          Maximum updated_at from fct_payments rows aggregated in this group. Used as the
+          watermark for the next incremental run - tied to the source change signal rather
+          than wall-clock time.
         tests:
           - not_null

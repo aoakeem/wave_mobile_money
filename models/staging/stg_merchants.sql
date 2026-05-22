@@ -1,5 +1,3 @@
-{{ config(materialized='view') }}
-
 select
     merchant_id,
     merchant_name,

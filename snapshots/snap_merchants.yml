@@ -1,0 +1,30 @@
+version: 2
+
+snapshots:
+  - name: snap_merchants
+    relation: source('raw', 'merchants')
+    config:
+      schema: snapshots
+      unique_key: merchant_id
+      strategy: timestamp
+      updated_at: updated_at
+      invalidate_hard_deletes: false
+    columns:
+      - name: merchant_id
+        description: Unique merchant identifier.
+      - name: merchant_name
+        description: Display name of the merchant.
+      - name: category
+        description: Merchant category at the time this snapshot row was valid.
+      - name: country
+        description: ISO 3166-1 alpha-2 country code.
+      - name: status
+        description: Merchant account status at the time this snapshot row was valid.
+      - name: created_at
+        description: Timestamp when the merchant was created.
+      - name: updated_at
+        description: Source updated_at used as the SCD2 change signal.
+      - name: dbt_valid_from
+        description: Timestamp from which this merchant row is valid.
+      - name: dbt_valid_to
+        description: Timestamp at which this merchant row expired. Null for the current row.

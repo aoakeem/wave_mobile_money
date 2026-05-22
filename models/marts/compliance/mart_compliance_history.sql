@@ -1,7 +1,6 @@
 {{ config(
     materialized='incremental',
-    incremental_strategy='append',
-    cluster_by=['checked_at']
+    incremental_strategy='append'
 ) }}
 
 select

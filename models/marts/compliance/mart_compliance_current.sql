@@ -11,11 +11,19 @@ with wallet_monthly_volumes as (
 ),
 
 wallets as (
-    select * from {{ ref('stg_wallets') }}
+    select
+        wallet_id,
+        country,
+        kyc_tier,
+        is_agent
+    from {{ ref('dim_wallets') }}
 ),
 
 limits as (
-    select * from {{ ref('kyc_limits') }}
+    select
+        kyc_tier,
+        monthly_limit_usd
+    from {{ ref('kyc_limits') }}
 )
 
 select

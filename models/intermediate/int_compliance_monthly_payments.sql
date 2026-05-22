@@ -12,13 +12,17 @@ with payments as (
         merchant_id,
         merchant_category,
         kyc_tier
-    from {{ ref('int_payments_enriched') }}
+    from {{ ref('fct_payments') }}
     where status = 'success'
     and date_trunc('month', created_at) = date_trunc('month', current_date)
 ),
 
 exchange_rates as (
-    select * from {{ source('raw', 'exchange_rates') }}
+    select
+        currency,
+        rate_date,
+        rate_to_usd
+    from {{ source('raw', 'exchange_rates') }}
 )
 
 select
